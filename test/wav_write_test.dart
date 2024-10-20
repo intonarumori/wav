@@ -31,7 +31,7 @@ void writeTest(String name, WavFormat format, int numChannels) {
         channels[i][j] = rand.next();
       }
     }
-    final wav = Wav(channels, 8000, format);
+    final wav = Wav(channels, 8000, format: format);
     await wav.writeFile(tempFilename);
 
     var expected = await File(filename).readAsBytes();
@@ -62,7 +62,7 @@ void main() async {
         Float64List.fromList([1, -1, 1, -1, 1, -1, 1, -1, 1]),
       ],
       100,
-      WavFormat.pcm8bit,
+      format: WavFormat.pcm8bit,
     );
     final buf = (BytesBuilder()
           ..add('RIFF'.codeUnits)
@@ -90,7 +90,7 @@ void main() async {
         Float64List.fromList([-1, -1, -1, -1]),
       ],
       100,
-      WavFormat.pcm8bit,
+      format: WavFormat.pcm8bit,
     );
     final buf = (BytesBuilder()
           ..add('RIFF'.codeUnits)
@@ -117,7 +117,7 @@ void main() async {
         Float64List.fromList([-100, -1.1, 1.1, 100]),
       ],
       100,
-      WavFormat.pcm8bit,
+      format: WavFormat.pcm8bit,
     );
     final buf = (BytesBuilder()
           ..add('RIFF'.codeUnits)
@@ -144,7 +144,7 @@ void main() async {
         Float64List.fromList([-100, 100]),
       ],
       100,
-      WavFormat.float32,
+      format: WavFormat.float32,
     );
     final buf = (BytesBuilder()
           ..add('RIFF'.codeUnits)

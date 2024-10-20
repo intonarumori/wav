@@ -41,6 +41,8 @@ class BytesReader {
     return ByteData.sublistView(_bytes, p0, _p);
   }
 
+  bool get hasData => _p < _bytes.length;
+
   /// Reads a Uint8 from the buffer.
   int readUint8() => _read(1).getUint8(0);
 
@@ -52,6 +54,40 @@ class BytesReader {
 
   /// Reads a Uint32 from the buffer.
   int readUint32() => _read(4).getUint32(0, Endian.little);
+
+  String readString(int length) {
+    var buffer = StringBuffer();
+    for (int i = 0; i < length; i++) {
+      buffer.writeCharCode(_read(1).getInt8(0));
+    }
+    return buffer.toString();
+  }
+
+  Uint8List readBytes(int length) {
+    final result = _bytes.sublist(_p, _p + length);
+    skip(length);
+    return result;
+  }
+
+  double readFloat32() {
+    return _readSampleFloat32();
+  }
+
+  int readSigned16BitInt() {
+    final index = _p;
+
+    // Make sure there are enough bytes in the list
+    if (index < 0 || index + 1 >= _bytes.length) {
+      throw RangeError('Index out of bounds');
+    }
+
+    skip(2);
+
+    // Combine the two bytes into a 16-bit integer
+    int combinedValue = _bytes[index + 1] << 8 | _bytes[index];
+    // Interpret the 16-bit integer as a signed value
+    return (combinedValue & 0x8000) != 0 ? combinedValue - 0x10000 : combinedValue;
+  }
 
   bool _checkString(String s) =>
       s ==

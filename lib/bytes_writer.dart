@@ -31,6 +31,11 @@ class BytesWriter {
     writeUint8(x >> 8);
   }
 
+  void writeSignedInt16(int value) {
+    writeUint8(value & 0xFF);
+    writeUint8((value >> 8) & 0xFF);
+  }
+
   /// Writes a Uint24 to the buffer.
   void writeUint24(int x) {
     writeUint16(x);
@@ -43,6 +48,14 @@ class BytesWriter {
     writeUint8(x >> 24);
   }
 
+  void writeBytes(Uint8List bytes) {
+    _bytes.add(bytes);
+  }
+
+  void writeFloat32(double x) {
+    _writeSampleFloat32(x);
+  }
+
   void _writeSample8Bit(double x) => writeUint8(sampleToInt(x, 8));
   void _writeSample16Bit(double x) => writeUint16(fold(sampleToInt(x, 16), 16));
   void _writeSample24Bit(double x) => writeUint24(fold(sampleToInt(x, 24), 24));
@@ -51,10 +64,8 @@ class BytesWriter {
   void _writeBytes(ByteData b, int n) => _bytes.add(b.buffer.asUint8List(0, n));
 
   static final _fbuf = ByteData(8);
-  void _writeSampleFloat32(double x) =>
-      _writeBytes(_fbuf..setFloat32(0, x, Endian.little), 4);
-  void _writeSampleFloat64(double x) =>
-      _writeBytes(_fbuf..setFloat64(0, x, Endian.little), 8);
+  void _writeSampleFloat32(double x) => _writeBytes(_fbuf..setFloat32(0, x, Endian.little), 4);
+  void _writeSampleFloat64(double x) => _writeBytes(_fbuf..setFloat64(0, x, Endian.little), 8);
 
   /// Writes string [s] to the buffer. [s] must be ASCII only.
   void writeString(String s) {

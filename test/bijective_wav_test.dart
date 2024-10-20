@@ -30,7 +30,7 @@ void bijectiveTest(String name, WavFormat format, int numChannels) {
         channels[i][j] = rand.next();
       }
     }
-    final wavBefore = Wav(channels, 46310, format);
+    final wavBefore = Wav(channels, 46310, format: format);
     await wavBefore.writeFile(tempFilename);
     final wavAfter = await Wav.readFile(tempFilename);
 

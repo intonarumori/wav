@@ -17,8 +17,11 @@ import 'dart:typed_data';
 import 'bytes_reader.dart';
 import 'bytes_writer.dart';
 import 'util.dart';
+import 'wav_acid.dart';
 import 'wav_format.dart';
+import 'wav_list.dart';
 import 'wav_no_io.dart' if (dart.library.io) 'wav_io.dart';
+import 'wav_sampler.dart';
 
 /// A WAV file, containing audio, and metadata.
 class Wav {
@@ -35,12 +38,21 @@ class Wav {
   /// The format of the WAV file.
   final WavFormat format;
 
+  final WavList? list;
+
+  final WavSampler? sampler;
+
+  final WavAcid? acid;
+
   /// Constructs a Wav directly from audio data.
-  Wav(
+  const Wav(
     this.channels,
-    this.samplesPerSecond, [
+    this.samplesPerSecond, {
     this.format = WavFormat.pcm16bit,
-  ]);
+    this.list,
+    this.sampler,
+    this.acid,
+  });
 
   /// Read a Wav from a file.
   ///
@@ -50,8 +62,7 @@ class Wav {
   }
 
   /// Returns the duration of the Wav in seconds.
-  double get duration =>
-      channels.isEmpty ? 0 : channels[0].length / samplesPerSecond;
+  double get duration => channels.isEmpty ? 0 : channels[0].length / samplesPerSecond;
 
   static const _kFormatSize = 16;
   static const _kFactSize = 4;
@@ -62,7 +73,11 @@ class Wav {
   static const _kStrRiff = 'RIFF';
   static const _kStrWave = 'WAVE';
   static const _kStrFmt = 'fmt ';
-  static const _kStrData = 'data';
+  static const dataHeader = 'data';
+  static const sampleHeader = 'smpl';
+  static const acidHeader = 'acid';
+  static const listHeader = 'LIST';
+  static const infoHeader = 'INFO';
   static const _kStrFact = 'fact';
 
   static WavFormat _getFormat(int formatCode, int bitsPerSample) {
@@ -98,23 +113,62 @@ class Wav {
     final bitsPerSample = byteReader.readUint16();
     if (fmtSize > _kFormatSize) byteReader.skip(fmtSize - _kFormatSize);
 
-    byteReader.findChunk(_kStrData);
-    final dataSize = byteReader.readUint32();
-    final numSamples = dataSize ~/ bytesPerSampleAllChannels;
     final channels = <Float64List>[];
-    for (int i = 0; i < numChannels; ++i) {
-      channels.add(Float64List(numSamples));
-    }
-    final format = _getFormat(formatCode, bitsPerSample);
+    WavFormat? format;
+    WavList? list;
+    WavSampler? sampler;
+    WavAcid? acid;
 
-    // Read samples.
-    final readSample = byteReader.getSampleReader(format);
-    for (int i = 0; i < numSamples; ++i) {
-      for (int j = 0; j < numChannels; ++j) {
-        channels[j][i] = readSample();
+    // Enumerate the chunks
+    while (byteReader.hasData) {
+      final chunkType = byteReader.readString(4);
+      final size = byteReader.readUint32();
+
+      print('chunktype $chunkType');
+
+      switch (chunkType) {
+        case dataHeader:
+          // Read data chunk and samples.
+          final numSamples = size ~/ bytesPerSampleAllChannels;
+          for (int i = 0; i < numChannels; ++i) {
+            channels.add(Float64List(numSamples));
+          }
+          format = _getFormat(formatCode, bitsPerSample);
+
+          final readSample = byteReader.getSampleReader(format);
+          for (int i = 0; i < numSamples; ++i) {
+            for (int j = 0; j < numChannels; ++j) {
+              channels[j][i] = readSample();
+            }
+          }
+          break;
+
+        case listHeader:
+          final info = byteReader.readString(4);
+          if (info == infoHeader) {
+            final bytes = byteReader.readBytes(size - 4);
+            list = WavList.parse(bytes);
+          } else {
+            byteReader.skip(size - 4);
+          }
+          break;
+
+        case sampleHeader:
+          sampler = WavSampler.parse(byteReader);
+          break;
+
+        case acidHeader:
+          acid = WavAcid.parse(byteReader);
+          break;
+
+        default:
+          byteReader.skip(roundUpToEven(size));
+          break;
       }
     }
-    return Wav(channels, samplesPerSecond, format);
+
+    return Wav(channels, samplesPerSecond,
+        format: format!, list: list, sampler: sampler, acid: acid);
   }
 
   /// Mix the audio channels down to mono.
@@ -160,6 +214,14 @@ class Wav {
       fileSize += _kFloatFmtExtraSize;
     }
 
+    final sampleBytes = sampler != null ? sampler!.asBytes() : Uint8List(0);
+    final acidBytes = acid != null ? acid!.asBytes() : Uint8List(0);
+    final listBytes = list != null ? list!.asBytes() : Uint8List(0);
+
+    fileSize += 8 + sampleBytes.length;
+    if (acidBytes.isNotEmpty) fileSize += 8 + acidBytes.length;
+    fileSize += listBytes.length;
+
     // Write metadata.
     final bytes = BytesWriter()
       ..writeString(_kStrRiff)
@@ -179,8 +241,21 @@ class Wav {
         ..writeUint32(_kFactSize)
         ..writeUint32(numSamples);
     }
+    if (sampleBytes.isNotEmpty) {
+      bytes
+        ..writeString(sampleHeader)
+        ..writeUint32(sampleBytes.length)
+        ..writeBytes(sampleBytes);
+    }
+    if (acidBytes.isNotEmpty) {
+      bytes
+        ..writeString(acidHeader)
+        ..writeUint32(acidBytes.length)
+        ..writeBytes(acidBytes);
+    }
     bytes
-      ..writeString(_kStrData)
+      ..writeBytes(listBytes)
+      ..writeString(dataHeader)
       ..writeUint32(dataSize);
 
     // Write samples.
